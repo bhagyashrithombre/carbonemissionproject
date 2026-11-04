@@ -1004,28 +1004,6 @@ plt.show()
 - **In-Depth Explanation**: Recaps the full lifecycle: ingestion, EDA, chronological sorting, sequence generation, data-leakage-free scaling, stacked LSTM training, evaluation, artifact persistence, and prescriptive simulation.
 - **Key Code**: `None (Markdown documentation cell)`
 - **Output & Insight**: Confirms complete, verified execution of the end-to-end industrial carbon forecasting pipeline.
-
----
-
-## 5. Key Methodological Rationale & Data Science Defense Q&A
-
-### Q1: Why is passing `validation_data=(X_test, y_test)` considered a flaw in standard ML practice?
-In the baseline training loop, passing `validation_data=(X_test, y_test)` exposes the held-out test set to `EarlyStopping` and `ReduceLROnPlateau` callbacks after every epoch. Because hyperparameter decisions (like when to stop training) are made based on test set loss, the test set is no longer an honest, unseen evaluation.
-* **The 3-Way Split Solution**: Split the dataset into 70% Train, 15% Validation, and 15% Test. `model.fit` uses `(X_val, y_val)` to monitor convergence, leaving `(X_test, y_test)` locked away until final evaluation.
-* **The Keras Shortcut**: Pass `validation_split=0.15` inside `model.fit` to carve out validation sequences automatically without touching the final test set.
-
-### Q2: Why formulate a 60-day sliding lookback window per company instead of shuffling rows?
-Treating industrial telemetry as independent tabular rows destroys temporal autocorrelation. An emission event on day $t$ depends directly on boiler heating cycles, logistics arrivals, and shift production from days $t-1, t-2, \dots, t-59$. By extracting sequences facility-by-facility, `build_sequences()` ensures Company 1's records never bleed into Company 2's sequences.
-
-### Q3: Why perform train/test splitting before feature and target scaling?
-Fitting `MinMaxScaler` on the entire dataset calculates global minimums and maximums across past and future days alike. In real-world industrial deployments, future maximums are unknown. Fitting scalers strictly on `X_train_raw` and applying `transform()` to `X_test_raw` guarantees zero data leakage.
-
-### Q4: Why choose a Stacked LSTM over traditional ARIMA or Random Forest?
-ARIMA cannot handle 15 multi-modal exogenous drivers simultaneously without severe collinearity issues. Standard Random Forests ignore the chronological order of the 60-day window. The Stacked LSTM architecture maintains recurrent hidden states $h_t$ and memory cells $C_t$, selectively forgetting unneeded history and storing long-range operational patterns.
-
-### Q5: How does the What-If Decarbonization Scenario work without retraining?
-The neural network learns the functional relationship $f(X) \to y$. In `simulate_reduction()`, we take the actual test tensors, unscale the `NonRenewable_Energy_Consumption_kWh` feature back into physical units, apply a curtailment factor $(1 - \text{reduction\_pct}/100)$, rescale back into $[0, 1]$, and run a forward pass through the frozen network. This provides instant, cost-free counterfactual policy evaluation for plant leadership.
-
 ---
 
 ## 6. Installation & Execution Guide
