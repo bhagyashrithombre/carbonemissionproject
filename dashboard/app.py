@@ -370,32 +370,45 @@ def load_target_scaler():
 
 @st.cache_data
 def load_metrics():
-    if not os.path.exists(METRICS_PATH):
-        return None
-    try:
-        with open(METRICS_PATH, "r") as file:
-            return json.load(file)
-    except Exception:
-        return None
-
+  if not os.path.exists(METRICS_PATH):
+    return None
+  try:
+    with open(METRICS_PATH, "r") as file:
+      m = json.load(file)
+    if "r2" not in m and "r2_score" in m:
+      m["r2"] = m["r2_score"]
+    if "r2_score" not in m and "r2" in m:
+      m["r2_score"] = m["r2"]
+    if "train_loss" not in m:
+      m["train_loss"] = []
+    if "val_loss" not in m:
+      m["val_loss"] = []
+    return m
+  except Exception:
+    return None
 
 @st.cache_data
 def load_test_data():
-    if not os.path.exists(TEST_DATA_PATH):
-        return None
-    try:
-        data = np.load(TEST_DATA_PATH, allow_pickle=True)
-        result = {
-            "X_test": data["X_test"],
-            "actual": data["actual"],
-            "predicted": data["predicted"],
-            "companies_test": data["companies_test"]
-        }
-        data.close()
-        return result
-    except Exception:
-        return None
-
+  if not os.path.exists(TEST_DATA_PATH):
+    return None
+  try:
+    data = np.load(TEST_DATA_PATH, allow_pickle=True)
+    # Handles notebook "companies" key and app "companies_test" key
+    comp = (
+        data["companies_test"]
+        if "companies_test" in data.files
+        else data["companies"]
+    )
+    result = {
+        "X_test": data["X_test"],
+        "actual": data["actual"],
+        "predicted": data["predicted"],
+        "companies_test": comp,
+    }
+    data.close()
+    return result
+  except Exception:
+    return None
 
 df = load_dataset()
 model = load_lstm_model()
@@ -507,10 +520,6 @@ elif selected_page == "Model Performance":
         unsafe_allow_html=True
     )
 
-    if metrics is None or len(actual) == 0:
-        st.warning("⚠️ Model performance artifacts not found. Please train the model first.")
-        st.stop()
-
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -549,26 +558,33 @@ elif selected_page == "Model Performance":
 
     section_title("Training and Validation Loss")
 
-    loss_df = pd.DataFrame(
-        {
+    if metrics.get("train_loss") and len(metrics["train_loss"]) > 0:
+        loss_df = pd.DataFrame({
             "Epoch": range(1, len(metrics["train_loss"]) + 1),
             "Training Loss": metrics["train_loss"],
-            "Validation Loss": metrics["val_loss"]
-        }
-    )
-
-    fig = px.line(
-        loss_df,
-        x="Epoch",
-        y=["Training Loss", "Validation Loss"]
-    )
-
-    fig.update_layout(
-        template="plotly_white",
-        height=450
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+            "Validation Loss": metrics.get("val_loss", []),
+        })
+        fig_loss = go.Figure()
+        fig_loss.add_trace(
+            go.Scatter(
+                x=loss_df["Epoch"], y=loss_df["Training Loss"], name="Train Loss"
+            )
+        )
+        if "val_loss" in metrics and len(metrics["val_loss"]) > 0:
+            fig_loss.add_trace(
+                go.Scatter(
+                    x=loss_df["Epoch"],
+                    y=loss_df["Validation Loss"],
+                    name="Val Loss",
+                )
+            )
+        fig_loss.update_layout(template="plotly_dark", height=400)
+        st.plotly_chart(fig_loss, use_container_width=True)
+    else:
+        st.info(
+            "ℹ️ Training loss curve is available when trained with in-memory"
+            " history logging."
+        )
 
 
 elif selected_page == "Forecast Prediction":
